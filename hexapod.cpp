@@ -67,6 +67,22 @@ leg &legSwitch(int num)
 	return leg1; // just so compiler throw no error :)
 }
 
+int getLegNum(leg *givenLeg)
+{
+	if (givenLeg == &leg1)
+		return 1;
+	else if (givenLeg == &leg2)
+		return 2;
+	else if (givenLeg == &leg3)
+		return 3;
+	else if (givenLeg == &leg4)
+		return 4;
+	else if (givenLeg == &leg5)
+		return 5;
+	else if (givenLeg == &leg6)
+		return 6;
+}
+
 void print(string output, string TAG = "empty")
 {
 	for (int i = 0; i < 4; i++)
@@ -129,6 +145,8 @@ void readData()
 		walkingAngle += 4 * pow(-1, key);
 		print("Walking Angle: " + to_string(walkingAngle), "keyboard");
 	}
+	else if (key == 'J')
+		mode = 4;
 	if (key != -1)
 		print(to_string(key), "keyboard");
 }
@@ -149,12 +167,12 @@ void Wait(int time)
 }
 
 // wait for given leg
-void servoWait(int legNum)
+void servoWait(leg *Leg)
 {
 	int motorNum = 1;
 	while (motorNum <= 3)
 	{
-		servo currentServo = legSwitch(legNum).servoSwitch(motorNum);
+		servo currentServo = Leg->servoSwitch(motorNum);
 		PositionSensor *encoder = currentServo.motor->getPositionSensor();
 		encoder->enable(5);
 		Wait(5);
@@ -176,14 +194,14 @@ void servoWait(int legNum)
 void legWait(int legNum = 0)
 {
 	if (legNum != 0) // for a given legNum
-		servoWait(legNum);
+		servoWait(&legSwitch(legNum));
 	else // for no given leg, ie. all legs
 		for (int tempLegNum = 1; tempLegNum <= 6; tempLegNum++)
-			servoWait(tempLegNum);
+			servoWait(&legSwitch(tempLegNum));
 }
 
 // write calculated values to all servos of a leg
-void legWrite(leg *Leg, int legNum)
+void legWrite(leg *Leg)
 {
 	// write calculated angles to the servo motors
 	Leg->servo1.motor->setPosition(Leg->servo1.angle);
@@ -192,12 +210,12 @@ void legWrite(leg *Leg, int legNum)
 
 	Leg->servoRadToDeg(); // change calculated angle to degrees
 	// print to serial
-	print("Leg: " + to_string(legNum) + " servo1: " + to_string(Leg->servo1.angle) + " servo2: " + to_string(Leg->servo2.angle) + " servo3: " + to_string(Leg->servo3.angle), "movement");
+	print("Leg: " + to_string(getLegNum(Leg)) + " servo1: " + to_string(Leg->servo1.angle) + " servo2: " + to_string(Leg->servo2.angle) + " servo3: " + to_string(Leg->servo3.angle), "movement");
 	Leg->servoDegToRad();
 
 	// wait for the servo to reach the calculated angle
 	if (wait)
-		legWait(legNum);
+		legWait(getLegNum(Leg));
 }
 
 // set stance of robot
@@ -218,6 +236,18 @@ void stance(char stance)
 
 void legValues();
 
+void calculateM1(leg *Leg)
+{
+	int legNum = getLegNum(Leg);
+	// M1 angle fix for webots
+	if (legNum == 1 || legNum == 4)
+		Leg->servo1.angle = atan(Leg->l.y / Leg->l.x); // find the correct formula -- obsidian note
+	else if (legNum == 2 || legNum == 5)
+		Leg->servo1.angle = atan(Leg->l.y / Leg->l.x) - PI / 3; // find the correct formula -- obsidian note
+	else if (legNum == 3 || legNum == 6)
+		Leg->servo1.angle = atan(Leg->l.y / Leg->l.x) + PI / 3; // find the correct formula -- obsidian note
+}
+
 void walk()
 {
 	print("started walking", "movement");
@@ -234,18 +264,12 @@ void walk()
 			local_leg->l.y += -1 * pow(-1, legDirection) * pow(-1, walkingDirection) * sin(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps; // -1 because vector is backwards
 			local_leg->l.z = (walkingDirection) ? height - addedHeight * legDirection : height - addedHeight * !legDirection;
 
-			// M1 angle fix for webots
-			if (legNum == 1 || legNum == 4)
-				local_leg->servo1.angle = atan(local_leg->l.y / local_leg->l.x); // find the correct formula -- obsidian note
-			else if (legNum == 2 || legNum == 5)
-				local_leg->servo1.angle = atan(local_leg->l.y / local_leg->l.x) - PI / 3; // find the correct formula -- obsidian note
-			else if (legNum == 3 || legNum == 6)
-				local_leg->servo1.angle = atan(local_leg->l.y / local_leg->l.x) + PI / 3; // find the correct formula -- obsidian note
+			calculateM1(local_leg);
 
 			print(to_string(legNum) + ": l.x=" + to_string(local_leg->l.x) + " l.y=" + to_string(local_leg->l.y) + " l.z" + to_string(local_leg->l.z), "calc");
 
 			legCalc(local_leg);
-			legWrite(local_leg, legNum);
+			legWrite(local_leg);
 
 			print(to_string(abs(local_leg->l.x)) + "-" + to_string(abs(limits[legNum][0])) + "=" + to_string(abs(local_leg->l.x) - abs(limits[legNum][0])) + " >= " + to_string(walkingCadence * cos(walkingAngle) / 2), "limits");
 			print(to_string(abs(local_leg->l.y)) + "-" + to_string(abs(limits[legNum][1])) + "=" + to_string(abs(local_leg->l.x) - abs(limits[legNum][0])) + " >= " + to_string(walkingCadence * sin(walkingAngle) / 2), "limits");
@@ -258,24 +282,29 @@ void walk()
 	print("ended walking", "movement");
 }
 
-// TODO: change to get Lx and Ly
-void set_LxNy(leg *local_leg)
+// get vector l with values for current width, height and motor1 angle
+vector3 get_l(leg *local_leg, float motor1 = -99)
 {
+	vector3 l;
+	if (motor1 == -99) // if custom motor1 value was not given
+		motor1 = local_leg->servo1.angle;
 	float x = sin(local_leg->angle + walkingAngle * DEG_TO_RAD);
-	float y = sin(PI - (local_leg->servo1.angle + local_leg->angle + walkingAngle * DEG_TO_RAD));
+	float y = sin(PI - (motor1 + local_leg->angle + walkingAngle * DEG_TO_RAD));
 	x = round(x * 100000) / 100000;
 	y = round(y * 100000) / 100000;
 	if (abs(round(x)) == abs(round(y)))
 	{
-		local_leg->l.x = -1 * cos(local_leg->angle + local_leg->servo1.angle) * (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2)));
-		local_leg->l.y = -1 * sin(local_leg->angle + local_leg->servo1.angle) * (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2)));
+		l.x = -1 * cos(local_leg->angle + motor1) * (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2)));
+		l.y = -1 * sin(local_leg->angle + motor1) * (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2)));
 	}
 	else
 	{
 		float temp = (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2))) * x * y;
-		local_leg->l.x = -1 * cos(local_leg->angle + local_leg->servo1.angle) * temp;
-		local_leg->l.y = -1 * sin(local_leg->angle + local_leg->servo1.angle) * temp;
+		l.x = -1 * cos(local_leg->angle + motor1) * temp;
+		l.y = -1 * sin(local_leg->angle + motor1) * temp;
 	}
+	l.z = height;
+	return l;
 }
 
 // TODO:
@@ -284,7 +313,23 @@ void set_LxNy(leg *local_leg)
 // set values of vector l of given leg accordingly
 void moveTo(leg *local_leg, vector3 pos, bool absolute = false)
 {
-	local_leg->l.x;
+	if (absolute)
+	{
+		local_leg->l.x = pos.x - local_leg->s1.x;
+		local_leg->l.y = pos.y - local_leg->s1.y;
+		local_leg->l.z = pos.z - local_leg->s1.z;
+	}
+	else
+	{
+		vector3 zero = get_l(local_leg, 0);
+		local_leg->l.x = pos.x - zero.x;
+		local_leg->l.y = pos.y - zero.y;
+		local_leg->l.z = pos.z - zero.z;
+	}
+
+	calculateM1(local_leg);
+	legCalc(local_leg);
+	legWrite(local_leg);
 }
 
 int main(int argc, char **argv)
@@ -318,10 +363,10 @@ int main(int argc, char **argv)
 			for (int i = 1; i <= 6; i++)
 			{
 				leg *local_leg = &legSwitch(i);
-				set_LxNy(local_leg);
-				local_leg->l.z = 13;	// set height of walking to 20 above of desired point so legs dont drag on the ground
-				legCalc(local_leg);		// calculate motor2 and motor3 angles
-				legWrite(local_leg, i); // write calculated values to leg servos
+				local_leg->l = get_l(local_leg);
+				local_leg->l.z = 13; // set height of walking to 20 above of desired point so legs dont drag on the ground
+				legCalc(local_leg);	 // calculate motor2 and motor3 angles
+				legWrite(local_leg); // write calculated values to leg servos
 			}
 			Wait(500);
 			for (int i = 0; i < 6; i++)
@@ -329,7 +374,7 @@ int main(int argc, char **argv)
 				leg *local_leg = &legSwitch(sequence[i]);
 				local_leg->l.z = height; // set height of walking to desired value
 				legCalc(local_leg);		 // calculate motor2 and motor3 angles
-				legWrite(local_leg, sequence[i]);
+				legWrite(local_leg);
 			}
 			wait = true;
 			Wait(500); // delay to make movement smoother
@@ -340,13 +385,13 @@ int main(int argc, char **argv)
 			for (int i = 0; i < 6; i++)
 			{
 				leg *local_leg = &legSwitch(sequence[i]);
-				set_LxNy(local_leg);
-				legCalc(local_leg);				  // calculate motor2 and motor3 angles
-				legWrite(local_leg, sequence[i]); // write calculated values to leg servos
-				local_leg->l.z = height;		  // set height of walking to desired value
-				legCalc(local_leg);				  // calculate motor2 and motor3 angles
-				legWrite(local_leg, sequence[i]); // write calculated values to leg servos
-				Wait(200);						  // delay to make movement smoother
+				local_leg->l = get_l(local_leg);
+				legCalc(local_leg);		 // calculate motor2 and motor3 angles
+				legWrite(local_leg);	 // write calculated values to leg servos
+				local_leg->l.z = height; // set height of walking to desired value
+				legCalc(local_leg);		 // calculate motor2 and motor3 angles
+				legWrite(local_leg);	 // write calculated values to leg servos
+				Wait(200);				 // delay to make movement smoother
 			}
 			cycles = 0;
 			break;
@@ -355,21 +400,9 @@ int main(int argc, char **argv)
 				for (int legNum = 1; legNum <= 6; legNum++)
 				{
 					leg *local_leg = &legSwitch(legNum);
-					float x = sin(local_leg->angle + walkingAngle * DEG_TO_RAD);
-					float y = sin(PI - (local_leg->angle + walkingAngle * DEG_TO_RAD));
-					x = round(x * 100000) / 100000;
-					y = round(y * 100000) / 100000;
-					if (abs(round(x)) == abs(round(y)))
-					{
-						limits[legNum][0] = -1 * cos(local_leg->angle) * (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2)));
-						limits[legNum][1] = -1 * sin(local_leg->angle) * (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2)));
-					}
-					else
-					{
-						float temp = (width - sqrt(pow(local_leg->s1.x, 2) + pow(local_leg->s1.y, 2))) * x * y;
-						limits[legNum][0] = -1 * cos(local_leg->angle) * temp;
-						limits[legNum][1] = -1 * sin(local_leg->angle) * temp;
-					}
+					vector3 temp = get_l(local_leg, 0);
+					limits[legNum][0] = temp.x;
+					limits[legNum][1] = temp.y;
 				}
 
 			walk();
@@ -378,6 +411,14 @@ int main(int argc, char **argv)
 
 			if (cycles >= 5)
 				mode = 2;
+			break;
+		case 4:
+			// TODO: idk fix bro
+			vector3 pos = {30, 30, height};
+			cout << &leg1 << endl;
+			print(to_string(pos.x) + " " + to_string(pos.y) + " " + to_string(pos.z) + " ");
+			moveTo(&leg1, pos);
+			mode = 0;
 			break;
 		}
 	}
