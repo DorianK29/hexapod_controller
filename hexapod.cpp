@@ -2,8 +2,6 @@
 #include <hexapod.h>
 
 /**
- * TODO:
- *	92 deg walking bug
  *
  * Features:
  * Print end pos of leg
@@ -24,7 +22,7 @@ leg leg1, leg2, leg3, leg4, leg5, leg6;
 
 // DEBUG
 // 1st bool is for empty
-bool excludedTags[5] = {true, true, true, true, true};
+bool excludedTags[5] = {false, true, true, true, true};
 
 int getTagIndex(string TAG)
 {
@@ -36,7 +34,7 @@ int getTagIndex(string TAG)
 		return 3;
 	else if (TAG == "calc")
 		return 4;
-	return 0;
+	return 0; // empty tag
 }
 // DEBUG-END
 
@@ -45,7 +43,7 @@ float width, height;
 float addedHeight = 10;
 float motorSpeed = 10; // 0.37
 int gaitStepMin = 5;
-float walkingAngle = 0;
+float walkingAngle = 92;
 float walkingCadence = 30;
 
 bool wait = true;
@@ -53,7 +51,6 @@ bool wait = true;
 bool walkingDirection = false;		  // if true go forwards, if false go backwards
 int mode;							  // what hexapod is doing rn
 int sequence[6] = {3, 1, 6, 4, 2, 5}; // sequence of which the legs move when setting back to standing position
-float limits[6][2];					  // 0 is x, 1 is y
 
 leg &legSwitch(int num)
 {
@@ -134,7 +131,7 @@ void stance(char stance)
 
 void print(string output, string TAG = "empty")
 {
-	if (excludedTags[getTagIndex(TAG) - 1])
+	if (excludedTags[getTagIndex(TAG)])
 		return;
 
 	cout << TAG + ": " << output << endl;
@@ -251,7 +248,6 @@ vector3 get_l(leg *local_leg, float motor1 = -99)
 // given leg with preset vector3 l values and motor1 angle calculate the rest
 void legCalc(leg *leg)
 {
-	print("s1.x: " + to_string(abs(leg->s1.x)) + "s1.y: " + to_string(leg->s1.y) + "s1.z: " + to_string(leg->s1.z), "calc");
 
 	leg->D.x = leg->l.x - leg->s1.x;
 	leg->D.y = leg->l.y - leg->s1.y;
@@ -269,6 +265,18 @@ void legCalc(leg *leg)
 	float R = asin((abs(leg->L.z) - abs(leg->l.z)) / joint1);
 	leg->servo2.angle = -1 * (acos((pow(joint2, 2) + pow(leg->L.length(), 2) - pow(joint3, 2)) / (2 * joint2 * leg->L.length())) - (P + R));
 	leg->servo3.angle = -1 * (PI - acos((pow(joint2, 2) + pow(joint3, 2) - pow(leg->L.length(), 2)) / (2 * joint2 * joint3)));
+	print("", "calc");
+	print("Leg" + to_string(getLegNum(leg)), "calc");
+	print("s1.x: " + to_string(leg->s1.x) + " s1.y: " + to_string(leg->s1.y) + " s1.z: " + to_string(leg->s1.z), "calc");
+	print("s2.x: " + to_string(leg->s2.x) + " s2.y: " + to_string(leg->s2.y) + " s2.z: " + to_string(leg->s2.z), "calc");
+	print("l.x: " + to_string(leg->l.x) + " l.y: " + to_string(leg->l.y) + " l.z: " + to_string(leg->l.z), "calc");
+	print("L.x: " + to_string(leg->L.x) + " L.y: " + to_string(leg->L.y) + " L.z: " + to_string(leg->L.z), "calc");
+	print("D.x: " + to_string(leg->D.x) + " D.y: " + to_string(leg->D.y) + " D.z: " + to_string(leg->D.z), "calc");
+	print("m1: " + to_string(leg->servo1.angle) + " m2: " + to_string(leg->servo2.angle) + " m3: " + to_string(leg->servo3.angle), "calc");
+	// print("Limit x: " + to_string(limits[getLegNum(leg) - 1][0]) + " difference: " + to_string(abs(abs(leg->l.x) - abs(limits[getLegNum(leg) - 1][0]))) + " max difference: " + to_string(abs(walkingCadence * cos(walkingAngle) / 2)), "limits");
+	// print("Limit y: " + to_string(limits[getLegNum(leg) - 1][1]) + " difference: " + to_string(abs(abs(leg->l.y) - abs(limits[getLegNum(leg) - 1][1]))) + " max difference: " + to_string(abs(walkingCadence * sin(walkingAngle) / 2)), "limits");
+
+	print("", "calc");
 }
 
 void calculateM1(leg *Leg)
@@ -298,10 +306,11 @@ void legValues()
 bool checkLimits(leg *Leg)
 {
 	int legNum = getLegNum(Leg) - 1;
-	print(to_string(abs(Leg->l.x)) + "-" + to_string(abs(limits[legNum][0])) + "=" + to_string(abs(Leg->l.x) - abs(limits[legNum][0])) + " >= " + to_string(walkingCadence * cos(walkingAngle) / 2), "limits");
-	print(to_string(abs(Leg->l.y)) + "-" + to_string(abs(limits[legNum][1])) + "=" + to_string(abs(Leg->l.x) - abs(limits[legNum][0])) + " >= " + to_string(walkingCadence * sin(walkingAngle) / 2), "limits");
 
-	if (abs(Leg->l.x) - abs(limits[legNum][0]) >= walkingCadence * cos(walkingAngle) / 2 && abs(Leg->l.y) - abs(limits[legNum][1]) >= walkingCadence * sin(walkingAngle) / 2)
+	print("L.x: " + to_string(Leg->l.x) + " L.x (0): " + to_string(get_l(Leg, 0).x) + " diff: " + to_string(abs(Leg->l.x - get_l(Leg, 0).x)) + " allowed diff: " + to_string(abs(walkingCadence * cos(walkingAngle * DEG_TO_RAD) / 2)), "limits");
+	print("L.y: " + to_string(Leg->l.y) + " L.y (0): " + to_string(get_l(Leg, 0).y) + " diff: " + to_string(abs(Leg->l.y - get_l(Leg, 0).y)) + " allowed diff: " + to_string(abs(walkingCadence * sin(walkingAngle * DEG_TO_RAD) / 2)), "limits");
+
+	if (abs(Leg->l.x - get_l(Leg, 0).x) >= abs(walkingCadence * cos(walkingAngle * DEG_TO_RAD) / 2) || abs(Leg->l.y - get_l(Leg, 0).y) >= abs(walkingCadence * sin(walkingAngle * DEG_TO_RAD) / 2))
 		return true;
 	return false;
 }
@@ -317,11 +326,6 @@ void legWrite(leg *Leg)
 	Leg->servo1.motor->setPosition(Leg->servo1.angle);
 	Leg->servo2.motor->setPosition(Leg->servo2.angle);
 	Leg->servo3.motor->setPosition(Leg->servo3.angle);
-
-	Leg->servoRadToDeg(); // change calculated angle to degrees
-	// print to serial
-	print("Leg: " + to_string(getLegNum(Leg)) + " servo1: " + to_string(Leg->servo1.angle) + " servo2: " + to_string(Leg->servo2.angle) + " servo3: " + to_string(Leg->servo3.angle), "movement");
-	Leg->servoDegToRad();
 
 	// wait for the servo to reach the calculated angle
 	if (wait)
@@ -377,9 +381,7 @@ void walk()
 			legCalc(local_leg);
 			legWrite(local_leg);
 
-			if (abs(local_leg->l.x) - abs(limits[legNum][0]) >= walkingCadence * cos(walkingAngle) / 2 && abs(local_leg->l.y) - abs(limits[legNum][1]) >= walkingCadence * sin(walkingAngle) / 2)
-				limit = true;
-			// limit = checkLimits(local_leg);
+			limit = checkLimits(local_leg);
 		}
 	}
 	walkingDirection = !walkingDirection;
@@ -479,14 +481,6 @@ int main(int argc, char **argv)
 			cycles = 0;
 			break;
 		case 3: // walk for a bit
-			if (cycles == 0)
-				for (int legNum = 1; legNum <= 6; legNum++)
-				{
-					leg *local_leg = &legSwitch(legNum);
-					vector3 temp = get_l(local_leg, 0);
-					limits[legNum][0] = temp.x;
-					limits[legNum][1] = temp.y;
-				}
 
 			walk();
 
