@@ -42,19 +42,19 @@ float width, height;
 
 float addedHeight = 10;
 float motorSpeed = 10; // 0.37
-int gaitStepMin = 5;
-float walkingAngle = 92;
+int minStepDistance = 5;
+float walkingAngle = 132;
 float walkingCadence = 30;
 
 bool wait = true;
 
-bool walkingDirection = false;		  // if true go forwards, if false go backwards
+bool robotWalkingDirection = false;	  // if true go forwards, if false go backwards
 int mode;							  // what hexapod is doing rn
 int sequence[6] = {3, 1, 6, 4, 2, 5}; // sequence of which the legs move when setting back to standing position
 
-leg &legSwitch(int num)
+leg &legSwitch(int legNumber)
 {
-	switch (num)
+	switch (legNumber)
 	{
 	case 1:
 		return leg1;
@@ -98,13 +98,13 @@ int getLegNum(leg *givenLeg)
 
 void initServos()
 {
-	for (int i = 1; i <= 6; i++)
+	for (int legNumber = 1; legNumber <= 6; legNumber++)
 	{
-		leg *temp_leg = &legSwitch(i);
-		for (int j = 1; j <= 3; j++)
+		leg *temp_leg = &legSwitch(legNumber);
+		for (int servoNumber = 1; servoNumber <= 3; servoNumber++)
 		{
-			temp_leg->servoSwitch(j).motor = robot->getMotor("servo " + to_string(i) + to_string(j));
-			temp_leg->servoSwitch(j).motor->setVelocity(motorSpeed);
+			temp_leg->servoSwitch(servoNumber).motor = robot->getMotor("servo " + to_string(legNumber) + to_string(servoNumber));
+			temp_leg->servoSwitch(servoNumber).motor->setVelocity(motorSpeed);
 		}
 	}
 }
@@ -183,7 +183,7 @@ void Wait(int time)
 }
 
 // wait for given leg
-void servoWait(leg *Leg)
+void legWait(leg *Leg)
 {
 	int motorNum = 1;
 	while (motorNum <= 3)
@@ -205,15 +205,11 @@ void servoWait(leg *Leg)
 	}
 }
 
-// wait for a given leg if given a legNum
-// if not given anything wait for all legs
-void legWait(int legNum = 0)
+// wait for all legs
+void robotWait()
 {
-	if (legNum != 0) // for a given legNum
-		servoWait(&legSwitch(legNum));
-	else // for no given leg, ie. all legs
-		for (int tempLegNum = 1; tempLegNum <= 6; tempLegNum++)
-			servoWait(&legSwitch(tempLegNum));
+	for (int legNumber = 1; legNumber <= 6; legNumber++)
+		legWait(&legSwitch(legNumber));
 }
 
 /**
@@ -221,6 +217,7 @@ void legWait(int legNum = 0)
  */
 
 // get vector l with values for current width, height and motor1 angle
+// could add + 2 * PI in all sine, never used with any motor1 angle different than 0
 vector3 get_l(leg *local_leg, float motor1 = -99)
 {
 	vector3 l;
@@ -248,7 +245,6 @@ vector3 get_l(leg *local_leg, float motor1 = -99)
 // given leg with preset vector3 l values and motor1 angle calculate the rest
 void legCalc(leg *leg)
 {
-
 	leg->D.x = leg->l.x - leg->s1.x;
 	leg->D.y = leg->l.y - leg->s1.y;
 	leg->D.z = leg->l.z - leg->s1.z;
@@ -273,8 +269,6 @@ void legCalc(leg *leg)
 	print("L.x: " + to_string(leg->L.x) + " L.y: " + to_string(leg->L.y) + " L.z: " + to_string(leg->L.z), "calc");
 	print("D.x: " + to_string(leg->D.x) + " D.y: " + to_string(leg->D.y) + " D.z: " + to_string(leg->D.z), "calc");
 	print("m1: " + to_string(leg->servo1.angle) + " m2: " + to_string(leg->servo2.angle) + " m3: " + to_string(leg->servo3.angle), "calc");
-	// print("Limit x: " + to_string(limits[getLegNum(leg) - 1][0]) + " difference: " + to_string(abs(abs(leg->l.x) - abs(limits[getLegNum(leg) - 1][0]))) + " max difference: " + to_string(abs(walkingCadence * cos(walkingAngle) / 2)), "limits");
-	// print("Limit y: " + to_string(limits[getLegNum(leg) - 1][1]) + " difference: " + to_string(abs(abs(leg->l.y) - abs(limits[getLegNum(leg) - 1][1]))) + " max difference: " + to_string(abs(walkingCadence * sin(walkingAngle) / 2)), "limits");
 
 	print("", "calc");
 }
@@ -307,10 +301,12 @@ bool checkLimits(leg *Leg)
 {
 	int legNum = getLegNum(Leg) - 1;
 
-	print("L.x: " + to_string(Leg->l.x) + " L.x (0): " + to_string(get_l(Leg, 0).x) + " diff: " + to_string(abs(Leg->l.x - get_l(Leg, 0).x)) + " allowed diff: " + to_string(abs(walkingCadence * cos(walkingAngle * DEG_TO_RAD) / 2)), "limits");
-	print("L.y: " + to_string(Leg->l.y) + " L.y (0): " + to_string(get_l(Leg, 0).y) + " diff: " + to_string(abs(Leg->l.y - get_l(Leg, 0).y)) + " allowed diff: " + to_string(abs(walkingCadence * sin(walkingAngle * DEG_TO_RAD) / 2)), "limits");
+	vector3 positionZero = get_l(Leg, 0);
 
-	if (abs(Leg->l.x - get_l(Leg, 0).x) >= abs(walkingCadence * cos(walkingAngle * DEG_TO_RAD) / 2) || abs(Leg->l.y - get_l(Leg, 0).y) >= abs(walkingCadence * sin(walkingAngle * DEG_TO_RAD) / 2))
+	print("L.x: " + to_string(Leg->l.x) + " L.x (0): " + to_string(positionZero.x) + " diff: " + to_string(abs(Leg->l.x - positionZero.x)) + " allowed diff: " + to_string(abs(walkingCadence * cos(walkingAngle * DEG_TO_RAD) / 2)), "limits");
+	print("L.y: " + to_string(Leg->l.y) + " L.y (0): " + to_string(positionZero.y) + " diff: " + to_string(abs(Leg->l.y - positionZero.y)) + " allowed diff: " + to_string(abs(walkingCadence * sin(walkingAngle * DEG_TO_RAD) / 2)), "limits");
+
+	if (abs(Leg->l.x - positionZero.x) >= abs(walkingCadence * cos(walkingAngle * DEG_TO_RAD) / 2) || abs(Leg->l.y - positionZero.y) >= abs(walkingCadence * sin(walkingAngle * DEG_TO_RAD) / 2))
 		return true;
 	return false;
 }
@@ -329,30 +325,40 @@ void legWrite(leg *Leg)
 
 	// wait for the servo to reach the calculated angle
 	if (wait)
-		legWait(getLegNum(Leg));
+		legWait(Leg);
 }
 
-// given a pos (either relative to current zero pos(m1 = 0, width distance, height distance), or absolute to body center)
+/**
+ * mode='a' - absolute (to body)
+ *		'p' - add to current pos
+		'n' - subtract from current pos
+ */
 // set values of vector l of given leg accordingly
-void moveTo(leg *local_leg, vector3 pos, bool absolute = false)
+void moveTo(leg *local_leg, vector3 pos, char mode = 'a')
 {
-	if (absolute)
+	switch (mode)
 	{
+	case 'a':
 		local_leg->l.x = pos.x - local_leg->s1.x;
 		local_leg->l.y = pos.y - local_leg->s1.y;
 		local_leg->l.z = pos.z - local_leg->s1.z;
-	}
-	else
-	{
-		vector3 zero = get_l(local_leg, 0);
-		local_leg->l.x = pos.x - zero.x;
-		local_leg->l.y = pos.y - zero.y;
-		local_leg->l.z = pos.z - zero.z;
+		break;
+	case 'p': // add to current pos
+			  // vector l is going in the negative direction
+		local_leg->l.x -= pos.x;
+		local_leg->l.y -= pos.y;
+		local_leg->l.z -= pos.z;
+		break;
+	case 'n': // subtract from current pos
+			  // vector l is going in the negative direction
+		local_leg->l.x += pos.x;
+		local_leg->l.y += pos.y;
+		local_leg->l.z += pos.z;
+		break;
 	}
 
 	int legNum = getLegNum(local_leg);
 	print(to_string(legNum) + ": l.x=" + to_string(local_leg->l.x) + " l.y=" + to_string(local_leg->l.y) + " l.z" + to_string(local_leg->l.z), "calc");
-
 	calculateM1(local_leg);
 	legCalc(local_leg);
 	legWrite(local_leg);
@@ -362,17 +368,17 @@ void walk()
 {
 	print("started walking", "movement");
 	bool limit = false;
-	float gaitSteps = walkingCadence / gaitStepMin;
+	float gaitSteps = walkingCadence / minStepDistance;
 	while (!limit && mode == 3)
 	{
 		for (int legNum = 1; legNum <= 6; legNum++)
 		{
 			leg *local_leg = &legSwitch(legNum);
-			bool legDirection = (legNum % 2 == 1) ? true : false; // legs number 1,3,5
+			bool legMovingDirection = (legNum % 2 == 1) ? true : false; // legs number 1,3,5
 
-			local_leg->l.x += -1 * pow(-1, legDirection) * pow(-1, walkingDirection) * cos(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps; // -1 because vector is backwards
-			local_leg->l.y += -1 * pow(-1, legDirection) * pow(-1, walkingDirection) * sin(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps; // -1 because vector is backwards
-			local_leg->l.z = (walkingDirection) ? height - addedHeight * legDirection : height - addedHeight * !legDirection;
+			local_leg->l.x += -1 * pow(-1, legMovingDirection) * pow(-1, robotWalkingDirection) * cos(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps; // -1 because vector is backwards
+			local_leg->l.y += -1 * pow(-1, legMovingDirection) * pow(-1, robotWalkingDirection) * sin(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps; // -1 because vector is backwards
+			local_leg->l.z = (robotWalkingDirection) ? height - addedHeight * legMovingDirection : height - addedHeight * !legMovingDirection;
 
 			calculateM1(local_leg);
 
@@ -384,7 +390,7 @@ void walk()
 			limit = checkLimits(local_leg);
 		}
 	}
-	walkingDirection = !walkingDirection;
+	robotWalkingDirection = !robotWalkingDirection;
 	print("ended walking", "movement");
 }
 
@@ -392,24 +398,24 @@ void walk2()
 {
 	print("started walking", "movement");
 	bool limit = false;
-	float gaitSteps = walkingCadence / gaitStepMin;
+	float gaitSteps = walkingCadence / minStepDistance;
 	while (!limit && mode == 3)
 	{
 		for (int legNum = 1; legNum <= 6; legNum++)
 		{
 			leg *local_leg = &legSwitch(legNum);
-			bool legDirection = (legNum % 2 == 1) ? true : false; // legs number 1,3,5
+			bool legMovingDirection = (legNum % 2 == 1) ? true : false; // legs number 1,3,5
+			vector3 pos = {cos(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps,
+						   sin(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps,
+						   (robotWalkingDirection) ? -addedHeight / gaitSteps * legMovingDirection : -addedHeight / gaitSteps * !legMovingDirection};
 
-			vector3 pos = {-1 * pow(-1, legDirection) * pow(-1, walkingDirection) * cos(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps,
-						   -1 * pow(-1, legDirection) * pow(-1, walkingDirection) * sin(walkingAngle * DEG_TO_RAD) * walkingCadence / gaitSteps,
-						   (walkingDirection) ? -addedHeight * legDirection : -addedHeight * !legDirection};
-
-			moveTo(local_leg, pos);
+			// This bool is equal to legMovingDirection, but if robotWalkingDirection is true than flip the bool
+			moveTo(local_leg, pos, ((legMovingDirection * !robotWalkingDirection) || (!legMovingDirection * robotWalkingDirection)) ? 'p' : 'n');
 
 			limit = checkLimits(local_leg);
 		}
 	}
-	walkingDirection = !walkingDirection;
+	robotWalkingDirection = !robotWalkingDirection;
 	print("ended walking", "movement");
 }
 
@@ -481,8 +487,7 @@ int main(int argc, char **argv)
 			cycles = 0;
 			break;
 		case 3: // walk for a bit
-
-			walk();
+			walk2();
 
 			cycles++;
 
