@@ -179,6 +179,12 @@ void readData()
 		setRobotWalkingAngle();
 		print("Walking Angle: " + to_string(walkingAngle), "keyboard");
 	}
+	else if (key == 'R')
+		mode = 4;
+	else if (key == 'O')
+		mode = 5;
+	else if (key == 'J')
+		mode = 6;
 	if (key != -1)
 		print(to_string(key), "keyboard");
 }
@@ -253,7 +259,6 @@ void setLegsAttachmentPos()
  * MOVEMENT
  */
 
-// TEST: walking test: z is wrong
 void walk()
 {
 	print("started walking", "movement");
@@ -281,6 +286,94 @@ void walk()
 	setRobotWalkingAngle();
 
 	print("ended walking", "movement");
+}
+
+// TODO: not finished
+void spin()
+{
+	print("started spinning", "movement");
+
+	float spinAngle = 360;
+	float spinIncrement = 5;
+	float allowedMovementAngle = 30;
+
+	for (int j = 0; j < spinAngle / allowedMovementAngle && mode == 4; j++)
+	{
+		for (int legNum = 0; legNum < 6; legNum++)
+		{
+			legIter[legNum].contactPointFromCenter.z = (legIter[legNum].touchingGround) ? legIter[legNum].restingPosition.z : legIter[legNum].restingPosition.z + legIter[legNum].stepHeight;
+		}
+		for (int i = 0; i < allowedMovementAngle / spinIncrement; i++)
+			for (int legNum = 0; legNum < 6; legNum++)
+			{
+				float angle = legIter[legNum].theta_z + legIter[legNum].servo1.angle + 90 * DEG_TO_RAD;
+				angle += (legIter[legNum].touchingGround) ? M_PI : 0;
+				cout << "Calculated angle: " << angle * RAD_TO_DEG << " thetaZ: " << legIter[legNum].theta_z * RAD_TO_DEG << "servo1 angle: " << legIter[legNum].servo1.angle * RAD_TO_DEG << endl;
+				legIter[legNum].contactPointFromCenter.x += cos(angle) * spinIncrement;
+				legIter[legNum].contactPointFromCenter.y += sin(angle) * spinIncrement;
+
+				legIter[legNum].move();
+
+				legWait(legIter[legNum]);
+			}
+		switchLegGroundContact();
+	}
+
+	print("ended spinning", "movement");
+}
+
+void rotatingDisc()
+{
+	float rotatingIncrement = 10;
+	float currentPosition = 0;
+
+	for (int legNum = 0; legNum < 6; legNum++)
+		legIter[legNum].contactPointFromCenter.z = legIter[legNum].restingPosition.z + 20 * sin(legIter[legNum].theta_z) - 20;
+
+	for (int legNum = 0; legNum < 6; legNum++)
+		legIter[legNum].move();
+
+	for (int legNum = 0; legNum < 6; legNum++)
+		legWait(legIter[legNum]);
+
+	while (mode == 5)
+	{
+		for (int legNum = 0; legNum < 6; legNum++)
+		{
+			legIter[legNum].contactPointFromCenter.z = legIter[legNum].restingPosition.z + 20 * sin(currentPosition + legIter[legNum].theta_z) + 10 * sin(currentPosition / 2) - 20;
+			legIter[legNum].move();
+			legWait(legIter[legNum]);
+		}
+		currentPosition += rotatingIncrement * DEG_TO_RAD;
+	}
+}
+
+void jump()
+{
+	for (int legNum = 0; legNum < 6; legNum++)
+	{
+		width = 55;
+		height = 0;
+		updateRobotRestPos();
+		legIter[legNum].contactPointFromCenter = legIter[legNum].restingPosition;
+	}
+	for (int legNum = 0; legNum < 6; legNum++)
+		legIter[legNum].move();
+	for (int legNum = 0; legNum < 6; legNum++)
+		legWait(legIter[legNum]);
+	Wait(200);
+	for (int legNum = 0; legNum < 6; legNum++)
+	{
+		width = 52;
+		height = 90;
+		updateRobotRestPos();
+		legIter[legNum].contactPointFromCenter = legIter[legNum].restingPosition;
+	}
+	for (int legNum = 0; legNum < 6; legNum++)
+		legIter[legNum].move();
+	for (int legNum = 0; legNum < 6; legNum++)
+		legWait(legIter[legNum]);
+	Wait(600);
 }
 
 /**
@@ -375,6 +468,15 @@ int main(int argc, char **argv)
 
 			if (cycles >= 20)
 				mode = 2;
+			break;
+		case 4: // spin
+			spin();
+			break;
+		case 5: // rotate disc cool
+			rotatingDisc();
+			break;
+		case 6: // jump
+			jump();
 			break;
 		}
 	}
