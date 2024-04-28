@@ -9,8 +9,12 @@ struct vector3
     // returns the length of the vector
     float length()
     {
-        float l = sqrt(x * x + y * y + z * z);
-        return l;
+        return sqrt(x * x + y * y + z * z);
+    }
+
+    float lengthXY()
+    {
+        return sqrt(x * x + y * y);
     }
 
     vector3 operator+(const vector3 &other) const

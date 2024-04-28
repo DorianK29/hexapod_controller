@@ -5,10 +5,10 @@
 #include <webots/PositionSensor.hpp>
 
 #include "vector3.hpp"
+#include "servo.hpp"
 
 struct leg
 {
-#include "servo.hpp"
 
     float lengthJoint1 = 44.75;
     float lengthJoint2 = 46.25;
@@ -41,9 +41,9 @@ struct leg
     vector3 completedStepPosition;
 
     // how much a leg moves in a single step
-    float stepLength;
+    float stepDistance;
     // the smallest increment of movement for the leg
-    float stepLengthIncrement;
+    float stepDistanceIncrement;
     // how far up the leg moves while not in contact with the ground
     float stepHeight;
 
@@ -70,11 +70,11 @@ struct leg
         ankleServo.degreesToRadians();
     }
 
-    void initServos(int legNum)
+    void connectServoToWebots(int legNum)
     {
         for (int servoNum = 0; servoNum < 3; servoNum++)
         {
-            servoIter[servoNum]->motor = robot->getMotor("servo " + std::to_string(legNum + 1) + std::to_string(servoNum + 1));
+            servoIter[servoNum]->motor = Hexapod->getMotor("servo " + std::to_string(legNum + 1) + std::to_string(servoNum + 1));
             servoIter[servoNum]->motor->setVelocity(servoIter[servoNum]->motorSpeed);
         }
     }
@@ -94,8 +94,8 @@ struct leg
 
     //     // print values for float variables
     //     // cout << "theta_z - " << theta_z * RAD_TO_DEG << endl;
-    //     // cout << "stepLength - " << stepLength << endl;
-    //     // cout << "stepLengthIncrement - " << stepLengthIncrement << endl;
+    //     // cout << "stepDistance - " << stepDistance << endl;
+    //     // cout << "stepDistanceIncrement - " << stepDistanceIncrement << endl;
     //     cout << "movingAngle - " << movingAngle << endl;
     //     // cout << "walkingHeight - " << walkingHeight << endl;
     //     // cout << "walkingWidth - " << walkingWidth << endl;
@@ -135,8 +135,8 @@ struct leg
     // {
     //     float difference[2] = {abs(limitPosition.x - groundContactPoint.x),
     //                            abs(limitPosition.y - groundContactPoint.y)};
-    //     float allowedDifference[2] = {abs(stepLengthIncrement * (float)cos(movingAngle) * (float)0.1),
-    //                                   abs(stepLengthIncrement * (float)sin(movingAngle) * (float)0.1)};
+    //     float allowedDifference[2] = {abs(stepDistanceIncrement * (float)cos(movingAngle) * (float)0.1),
+    //                                   abs(stepDistanceIncrement * (float)sin(movingAngle) * (float)0.1)};
 
     //     for (int i = 0; i < 2; i++)
     //         if (allowedDifference[i] < 0.001)
@@ -149,7 +149,7 @@ struct leg
 
     bool checkIfStepCompleted()
     {
-        if ((defaultPosition - groundContactPoint).length() >= stepLength)
+        if ((defaultPosition - groundContactPoint).length() >= stepDistance)
             return true;
         return false;
     }
@@ -175,7 +175,7 @@ struct leg
             float difference = calcAngle - servoAngle; // difference between the calculated angle and the servo motor
             // if motor is not in position wait
             // a motor is in position if the difference is less than 1 degree
-            if (abs(difference) >= 5 * DEG_TO_RAD)
+            if (abs(difference) >= 2 * DEG_TO_RAD)
                 print((std::string) "Servo Wait...", tags::wait); // print wait if the difference is more than 1 degree
             else
                 servoNum++; // when current motor is in position go to the next motor
